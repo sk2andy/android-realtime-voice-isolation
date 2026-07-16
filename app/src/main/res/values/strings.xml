@@ -1,0 +1,65 @@
+<resources>
+    <string name="app_name">Voice Isolation</string>
+    <string name="brand_voice">VOICE</string>
+    <string name="brand_isolation">ISOLATION</string>
+    <string name="tagline">Highlight voices. Reduce music and background noise. On-device.</string>
+    <string name="output">Output</string>
+    <string name="volume_percent">%1$d%%</string>
+    <string name="metric_inference">Inference</string>
+    <string name="metric_rtf">RTF</string>
+    <string name="metric_input">Input</string>
+    <string name="action_start">START</string>
+    <string name="action_stop">STOP</string>
+    <string name="action_open_shizuku">OPEN SHIZUKU</string>
+    <string name="shizuku_connected">Shizuku connected</string>
+    <string name="shizuku_offline">Shizuku offline</string>
+    <string name="requirements_title">REQUIREMENTS</string>
+    <string name="setup_install_shizuku">Install Shizuku and start it after every reboot.</string>
+    <string name="setup_grant_permission">Allow Voice Isolation once in Shizuku.</string>
+    <string name="setup_start_media">Play media in another app, then tap START here.</string>
+    <string name="capture_limitations">Regular media and game audio is captured. DRM, calls, alarms, and some vendor routes are technically excluded.</string>
+
+    <string name="phase_idle">IDLE</string>
+    <string name="phase_connecting">CONNECTING</string>
+    <string name="phase_loading_model">LOADING MODEL</string>
+    <string name="phase_running">RUNNING</string>
+    <string name="phase_stopping">STOPPING</string>
+    <string name="phase_error">ERROR</string>
+
+    <string name="state_ready">Ready</string>
+    <string name="state_connecting_shizuku">Connecting to Shizuku</string>
+    <string name="state_starting_privileged_service">Starting privileged audio service</string>
+    <string name="state_releasing_audio_route">Releasing audio route</string>
+    <string name="state_isolation_running">Voice isolation is running</string>
+    <string name="state_loading_gtcrn">Loading GTCRN as UID %1$d</string>
+    <string name="state_media_isolated">Media audio is being isolated live</string>
+
+    <string name="error_shizuku_stopped">Shizuku stopped</string>
+    <string name="error_shizuku_permission_denied">Shizuku permission was not granted</string>
+    <string name="error_shizuku_not_running_instructions">Shizuku is not running. Start Shizuku and tap here again.</string>
+    <string name="error_shizuku_minimum_version">Shizuku API %1$d or newer is required</string>
+    <string name="error_shizuku_enable_permission">Enable Voice Isolation permission in Shizuku</string>
+    <string name="error_shizuku">Shizuku error: %1$s</string>
+    <string name="error_shizuku_service_start">Could not start Shizuku service: %1$s</string>
+    <string name="error_shizuku_disconnected">Shizuku connection was lost</string>
+    <string name="error_shizuku_not_running">Shizuku is not running</string>
+    <string name="error_shizuku_permission_missing">Shizuku permission is missing</string>
+    <string name="error_shizuku_connection_failed">Could not connect to Shizuku</string>
+    <string name="error_unknown">Unknown error</string>
+    <string name="error_audio_pipeline_running">Audio pipeline is already running</string>
+    <string name="error_audio_track_format">Unsupported AudioTrack format: %1$d</string>
+    <string name="error_audio_track_initialization">AudioTrack initialization failed</string>
+    <string name="error_audio_record_read">AudioRecord read failed: %1$d</string>
+    <string name="error_audio_track_write">AudioTrack write failed: %1$d</string>
+    <string name="error_audio_policy_open">Audio policy is already open</string>
+    <string name="error_audio_policy_registration">AudioPolicy registration failed: %1$d</string>
+    <string name="error_audio_record_sink_initialization">AudioRecord sink initialization failed</string>
+    <string name="error_audio_record_format">Unsupported AudioRecord format: %1$d</string>
+    <string name="error_onnx_output_missing">Missing ONNX output: %1$s</string>
+    <string name="error_attribution_source_field_missing">Context has no mAttributionSource field</string>
+
+    <string name="notification_channel_name">Live voice isolation</string>
+    <string name="notification_channel_description">Visible while media audio is processed live</string>
+    <string name="notification_volume">Volume %1$d%%</string>
+    <string name="notification_stop">Stop</string>
+</resources>
