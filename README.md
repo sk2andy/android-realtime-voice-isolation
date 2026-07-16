@@ -5,6 +5,7 @@ Android app that captures regular media and game audio through Shizuku, processe
 ## What works
 
 - One tap on **START** connects to the already running Shizuku service, loads GTCRN, and configures the audio route.
+- A Quick Settings tile starts or stops isolation without opening the app; long-pressing the tile opens the app.
 - A persistent notification shows the active service and provides volume and stop actions.
 - Processing stays entirely on-device; the app intentionally has no internet permission.
 - A privileged AOSP `AudioPolicy` loopback route replaces the original mix without changing the global media volume.
@@ -17,6 +18,7 @@ Android app that captures regular media and game audio through Shizuku, processe
 3. Start Shizuku. Without root, this is required again after every reboot; Android 11+ can use wireless debugging.
 4. Install the app and grant Shizuku access on first use.
 5. Start a media app and tap **START** in Voice Isolation.
+6. Optional: add **Voice Isolation** from the Quick Settings edit screen for one-tap access.
 
 Once Shizuku is running and permission has been granted, starting the app is fully automatic. Without root, the app cannot start Shizuku by itself after a device reboot.
 
