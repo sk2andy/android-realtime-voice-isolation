@@ -3,8 +3,8 @@
     <string name="brand_voice">VOICE</string>
     <string name="brand_isolation">ISOLATION</string>
     <string name="tagline">Highlight voices. Reduce music and background noise. On-device.</string>
-    <string name="output">Output</string>
-    <string name="volume_percent">%1$d%%</string>
+    <string name="intensity">Intensity</string>
+    <string name="intensity_percent">%1$d%%</string>
     <string name="metric_inference">Inference</string>
     <string name="metric_rtf">RTF</string>
     <string name="metric_input">Input</string>
@@ -60,6 +60,6 @@
 
     <string name="notification_channel_name">Live voice isolation</string>
     <string name="notification_channel_description">Visible while media audio is processed live</string>
-    <string name="notification_volume">Volume %1$d%%</string>
+    <string name="notification_intensity">Intensity %1$d%%</string>
     <string name="notification_stop">Stop</string>
 </resources>

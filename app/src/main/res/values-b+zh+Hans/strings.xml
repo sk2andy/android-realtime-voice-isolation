@@ -3,8 +3,8 @@
     <string name="brand_voice">VOICE</string>
     <string name="brand_isolation">ISOLATION</string>
     <string name="tagline">突出人声，减弱音乐和背景噪声。完全在设备端处理。</string>
-    <string name="output">输出</string>
-    <string name="volume_percent">%1$d%%</string>
+    <string name="intensity">强度</string>
+    <string name="intensity_percent">%1$d%%</string>
     <string name="metric_inference">推理</string>
     <string name="metric_rtf">RTF</string>
     <string name="metric_input">输入</string>
@@ -56,6 +56,6 @@
     <string name="error_attribution_source_field_missing">Context 中没有 mAttributionSource 字段</string>
     <string name="notification_channel_name">实时人声隔离</string>
     <string name="notification_channel_description">实时处理媒体音频时显示</string>
-    <string name="notification_volume">音量 %1$d%%</string>
+    <string name="notification_intensity">强度 %1$d%%</string>
     <string name="notification_stop">停止</string>
 </resources>

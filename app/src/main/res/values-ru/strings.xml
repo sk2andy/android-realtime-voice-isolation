@@ -3,8 +3,8 @@
     <string name="brand_voice">VOICE</string>
     <string name="brand_isolation">ISOLATION</string>
     <string name="tagline">Выделяйте голоса. Подавляйте музыку и фоновый шум. Прямо на устройстве.</string>
-    <string name="output">Выход</string>
-    <string name="volume_percent">%1$d%%</string>
+    <string name="intensity">Интенсивность</string>
+    <string name="intensity_percent">%1$d%%</string>
     <string name="metric_inference">Инференс</string>
     <string name="metric_rtf">RTF</string>
     <string name="metric_input">Вход</string>
@@ -56,6 +56,6 @@
     <string name="error_attribution_source_field_missing">В контексте нет поля mAttributionSource</string>
     <string name="notification_channel_name">Изоляция голоса в реальном времени</string>
     <string name="notification_channel_description">Отображается во время обработки звука медиа в реальном времени</string>
-    <string name="notification_volume">Громкость %1$d%%</string>
+    <string name="notification_intensity">Интенсивность %1$d%%</string>
     <string name="notification_stop">Остановить</string>
 </resources>

@@ -3,8 +3,8 @@
     <string name="brand_voice">VOICE</string>
     <string name="brand_isolation">ISOLATION</string>
     <string name="tagline">Destaca las voces. Reduce la música y el ruido de fondo. Todo en el dispositivo.</string>
-    <string name="output">Salida</string>
-    <string name="volume_percent">%1$d%%</string>
+    <string name="intensity">Intensidad</string>
+    <string name="intensity_percent">%1$d%%</string>
     <string name="metric_inference">Inferencia</string>
     <string name="metric_rtf">RTF</string>
     <string name="metric_input">Entrada</string>
@@ -56,6 +56,6 @@
     <string name="error_attribution_source_field_missing">El contexto no contiene el campo mAttributionSource</string>
     <string name="notification_channel_name">Aislamiento de voz en directo</string>
     <string name="notification_channel_description">Visible mientras se procesa audio multimedia en directo</string>
-    <string name="notification_volume">Volumen %1$d%%</string>
+    <string name="notification_intensity">Intensidad %1$d%%</string>
     <string name="notification_stop">Detener</string>
 </resources>

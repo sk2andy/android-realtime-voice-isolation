@@ -18,7 +18,7 @@ enum class IsolationPhase {
 data class IsolationUiState(
     val phase: IsolationPhase = IsolationPhase.Idle,
     val message: String = "",
-    val volume: Float = 0.65f,
+    val intensity: Float = 0.65f,
     val stats: ProcessingStats? = null,
 )
 
@@ -36,8 +36,8 @@ object IsolationStateStore {
         }
     }
 
-    fun updateVolume(volume: Float) {
-        mutableState.update { it.copy(volume = volume.coerceIn(0f, 1f)) }
+    fun updateIntensity(intensity: Float) {
+        mutableState.update { it.copy(intensity = intensity.coerceIn(0f, 1f)) }
     }
 
     fun updateStats(stats: ProcessingStats) {

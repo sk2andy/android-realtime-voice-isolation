@@ -30,7 +30,7 @@ class PrivilegedIsolationUserService @Keep constructor(
     private var callback: IIsolationCallback? = null
     private var pipeline: PrivilegedAudioPipeline? = null
 
-    override fun start(volume: Float, callback: IIsolationCallback) {
+    override fun start(intensity: Float, callback: IIsolationCallback) {
         this.callback = callback
         scope.launch {
             mutex.withLock {
@@ -61,7 +61,7 @@ class PrivilegedIsolationUserService @Keep constructor(
                 )
 
                 try {
-                    createdPipeline.start(volume)
+                    createdPipeline.start(intensity)
                     pipeline = createdPipeline
                     running = true
                     notifyState(IsolationProtocol.RUNNING, context.getString(R.string.state_media_isolated))
@@ -87,8 +87,8 @@ class PrivilegedIsolationUserService @Keep constructor(
         }
     }
 
-    override fun setVolume(volume: Float) {
-        pipeline?.setVolume(volume)
+    override fun setIntensity(intensity: Float) {
+        pipeline?.setIntensity(intensity)
     }
 
     override fun isRunning(): Boolean = running

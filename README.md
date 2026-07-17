@@ -1,12 +1,14 @@
 # Voice Isolation for Android
 
-Android app that captures regular media and game audio through Shizuku, processes it with an on-device streaming ML model, and plays back only the processed signal.
+Android app that captures regular media and game audio through Shizuku, processes it with an on-device streaming ML model, and blends the original and isolated signals at an adjustable intensity.
 
 ## What works
 
 - One tap on **START** connects to the already running Shizuku service, loads GTCRN, and configures the audio route.
 - A Quick Settings tile starts or stops isolation without opening the app; long-pressing the tile opens the app.
-- A persistent notification shows the active service and provides volume and stop actions.
+- A persistent notification shows the active service and provides intensity and stop actions.
+- The intensity control ranges from the latency-aligned original signal at 0% to fully isolated audio at 100%.
+- Full isolation compensates the model's measured 2.3 dB voice attenuation while retaining background suppression.
 - Processing stays entirely on-device; the app intentionally has no internet permission.
 - A privileged AOSP `AudioPolicy` loopback route replaces the original mix without changing the global media volume.
 - Stopping releases `AudioRecord`, `AudioTrack`, ONNX Runtime, and the dynamic audio policy.
@@ -46,10 +48,10 @@ Media apps
 AOSP AudioPolicy: pure LOOP_BACK (Shizuku UID shell/root)
     │  16 kHz mono PCM
     ▼
-AudioRecord → STFT → GTCRN/ONNX Runtime → iSTFT → AudioTrack
-                                                    │
-                                                    ▼
-                                           active output device
+AudioRecord ─┬──────────────────── delayed dry ────────────────┐
+             └→ STFT → GTCRN/ONNX Runtime → iSTFT → +2.3 dB ─┤
+                                                                ▼
+                                                     intensity mix → AudioTrack
 ```
 
 The app excludes its own `AudioTrack` from the capture mix by Shizuku UID. Android 13+ also receives the correct `com.android.shell` attribution so AudioFlinger accepts the shell identity. On Android 12, the ADB shell lacks the required `MODIFY_AUDIO_ROUTING` permission, so that version is not listed as compatible.

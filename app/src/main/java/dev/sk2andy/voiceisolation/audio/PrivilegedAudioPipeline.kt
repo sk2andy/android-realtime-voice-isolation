@@ -31,16 +31,16 @@ internal class PrivilegedAudioPipeline(
     private var processingJob: Job? = null
 
     @Volatile
-    private var outputVolume = 0.65f
+    private var isolationIntensity = 0.65f
 
-    suspend fun start(initialVolume: Float) {
+    suspend fun start(initialIntensity: Float) {
         checkUserVisible(processingJob == null) {
             UserVisibleAudioException(
                 R.string.error_audio_pipeline_running,
                 "Audio pipeline is already running",
             )
         }
-        outputVolume = initialVolume.coerceIn(0f, 1f)
+        isolationIntensity = initialIntensity.coerceIn(0f, 1f)
 
         try {
             context.installShellAttribution()
@@ -63,8 +63,8 @@ internal class PrivilegedAudioPipeline(
         }
     }
 
-    fun setVolume(value: Float) {
-        outputVolume = value.coerceIn(0f, 1f)
+    fun setIntensity(value: Float) {
+        isolationIntensity = value.coerceIn(0f, 1f)
     }
 
     suspend fun stop() {
@@ -92,14 +92,17 @@ internal class PrivilegedAudioPipeline(
         val inputPcm = ShortArray(StftProcessor.HOP_SIZE)
         val outputPcm = ShortArray(StftProcessor.HOP_SIZE)
         val inputFloat = FloatArray(StftProcessor.HOP_SIZE)
+        val mixedFloat = FloatArray(StftProcessor.HOP_SIZE)
+        val intensityMixer = IsolationIntensityMixer(StftProcessor.HOP_SIZE)
         var frameCounter = 0
 
         try {
             while (currentCoroutineContext().isActive) {
                 readFrame(record, inputPcm)
                 PcmConverter.toFloat(inputPcm, inputFloat)
-                val outputFloat = model.process(inputFloat)
-                PcmConverter.toShort(outputFloat, outputPcm, outputVolume)
+                val isolatedFloat = model.process(inputFloat)
+                intensityMixer.mix(inputFloat, isolatedFloat, mixedFloat, isolationIntensity)
+                PcmConverter.toShort(mixedFloat, outputPcm)
                 writeFrame(track, outputPcm)
 
                 frameCounter++

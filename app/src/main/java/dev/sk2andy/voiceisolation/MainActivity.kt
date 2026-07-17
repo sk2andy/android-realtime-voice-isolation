@@ -102,7 +102,7 @@ class MainActivity : ComponentActivity() {
                     onStart = ::requestNotificationThenStart,
                     onStop = ::stopIsolation,
                     onOpenShizuku = ::openShizuku,
-                    onVolumeChange = ::setOutputVolume,
+                    onIntensityChange = ::setIntensity,
                 )
             }
         }
@@ -187,12 +187,12 @@ class MainActivity : ComponentActivity() {
         startService(AudioIsolationService.intent(this, AudioIsolationService.ACTION_STOP))
     }
 
-    private fun setOutputVolume(volume: Float) {
-        IsolationStateStore.updateVolume(volume)
+    private fun setIntensity(intensity: Float) {
+        IsolationStateStore.updateIntensity(intensity)
         if (IsolationStateStore.state.value.phase == IsolationPhase.Running) {
             startService(
-                AudioIsolationService.intent(this, AudioIsolationService.ACTION_SET_VOLUME)
-                    .putExtra(AudioIsolationService.EXTRA_VOLUME, volume),
+                AudioIsolationService.intent(this, AudioIsolationService.ACTION_SET_INTENSITY)
+                    .putExtra(AudioIsolationService.EXTRA_INTENSITY, intensity),
             )
         }
     }
@@ -254,7 +254,7 @@ private fun MainScreen(
     onStart: () -> Unit,
     onStop: () -> Unit,
     onOpenShizuku: () -> Unit,
-    onVolumeChange: (Float) -> Unit,
+    onIntensityChange: (Float) -> Unit,
 ) {
     val active = state.phase in setOf(
         IsolationPhase.Connecting,
@@ -294,13 +294,13 @@ private fun MainScreen(
             ) {
                 Column(Modifier.padding(20.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(stringResource(R.string.output), fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.intensity), fontWeight = FontWeight.Bold)
                         Text(
-                            stringResource(R.string.volume_percent, (state.volume * 100).toInt()),
+                            stringResource(R.string.intensity_percent, (state.intensity * 100).toInt()),
                             color = Mint,
                         )
                     }
-                    Slider(value = state.volume, onValueChange = onVolumeChange)
+                    Slider(value = state.intensity, onValueChange = onIntensityChange)
                     state.stats?.let { stats ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Metric(stringResource(R.string.metric_inference), "%.1f ms".format(stats.inferenceMs))

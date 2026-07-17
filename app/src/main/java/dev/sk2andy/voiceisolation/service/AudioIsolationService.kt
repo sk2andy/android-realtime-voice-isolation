@@ -75,7 +75,7 @@ class AudioIsolationService : Service() {
             }
             userService = connectedService
             try {
-                connectedService.start(IsolationStateStore.state.value.volume, callback)
+                connectedService.start(IsolationStateStore.state.value.intensity, callback)
             } catch (error: Throwable) {
                 Log.e(TAG, "Shizuku UserService start failed", error)
                 fail(
@@ -112,9 +112,11 @@ class AudioIsolationService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> stopIsolation()
-            ACTION_VOLUME_UP -> changeVolume(VOLUME_STEP)
-            ACTION_VOLUME_DOWN -> changeVolume(-VOLUME_STEP)
-            ACTION_SET_VOLUME -> setVolume(intent.getFloatExtra(EXTRA_VOLUME, DEFAULT_VOLUME))
+            ACTION_INTENSITY_UP -> changeIntensity(INTENSITY_STEP)
+            ACTION_INTENSITY_DOWN -> changeIntensity(-INTENSITY_STEP)
+            ACTION_SET_INTENSITY -> setIntensity(
+                intent.getFloatExtra(EXTRA_INTENSITY, DEFAULT_INTENSITY),
+            )
             ACTION_START -> startIsolation()
         }
         return START_NOT_STICKY
@@ -181,14 +183,14 @@ class AudioIsolationService : Service() {
         stopSelf()
     }
 
-    private fun changeVolume(delta: Float) {
-        setVolume(IsolationStateStore.state.value.volume + delta)
+    private fun changeIntensity(delta: Float) {
+        setIntensity(IsolationStateStore.state.value.intensity + delta)
     }
 
-    private fun setVolume(volume: Float) {
-        val normalized = volume.coerceIn(0f, 1f)
-        IsolationStateStore.updateVolume(normalized)
-        runCatching { userService?.setVolume(normalized) }
+    private fun setIntensity(intensity: Float) {
+        val normalized = intensity.coerceIn(0f, 1f)
+        IsolationStateStore.updateIntensity(normalized)
+        runCatching { userService?.setIntensity(normalized) }
         updateNotification()
     }
 
@@ -228,11 +230,11 @@ class AudioIsolationService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val stop = actionPendingIntent(ACTION_STOP, 1)
-        val volumeDown = actionPendingIntent(ACTION_VOLUME_DOWN, 2)
-        val volumeUp = actionPendingIntent(ACTION_VOLUME_UP, 3)
+        val intensityDown = actionPendingIntent(ACTION_INTENSITY_DOWN, 2)
+        val intensityUp = actionPendingIntent(ACTION_INTENSITY_UP, 3)
         val detail = if (state.phase == IsolationPhase.Running) {
             val rtf = state.stats?.realTimeFactor?.let { " · RTF %.2f".format(it) }.orEmpty()
-            getString(R.string.notification_volume, (state.volume * 100).toInt()) + rtf
+            getString(R.string.notification_intensity, (state.intensity * 100).toInt()) + rtf
         } else {
             state.message
         }
@@ -245,8 +247,8 @@ class AudioIsolationService : Service() {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .addAction(R.drawable.ic_notification, "−", volumeDown)
-            .addAction(R.drawable.ic_notification, "+", volumeUp)
+            .addAction(R.drawable.ic_notification, "−", intensityDown)
+            .addAction(R.drawable.ic_notification, "+", intensityUp)
             .addAction(R.drawable.ic_notification, getString(R.string.notification_stop), stop)
             .build()
     }
@@ -267,17 +269,17 @@ class AudioIsolationService : Service() {
     companion object {
         const val ACTION_START = "dev.sk2andy.voiceisolation.action.START"
         const val ACTION_STOP = "dev.sk2andy.voiceisolation.action.STOP"
-        const val ACTION_VOLUME_UP = "dev.sk2andy.voiceisolation.action.VOLUME_UP"
-        const val ACTION_VOLUME_DOWN = "dev.sk2andy.voiceisolation.action.VOLUME_DOWN"
-        const val ACTION_SET_VOLUME = "dev.sk2andy.voiceisolation.action.SET_VOLUME"
-        const val EXTRA_VOLUME = "volume"
+        const val ACTION_INTENSITY_UP = "dev.sk2andy.voiceisolation.action.INTENSITY_UP"
+        const val ACTION_INTENSITY_DOWN = "dev.sk2andy.voiceisolation.action.INTENSITY_DOWN"
+        const val ACTION_SET_INTENSITY = "dev.sk2andy.voiceisolation.action.SET_INTENSITY"
+        const val EXTRA_INTENSITY = "intensity"
 
         private const val TAG = "AudioIsolationService"
         private const val CHANNEL_ID = "voice_isolation_active"
         private const val NOTIFICATION_ID = 4101
         private const val MINIMUM_SHIZUKU_VERSION = 13
-        private const val VOLUME_STEP = 0.1f
-        private const val DEFAULT_VOLUME = 0.65f
+        private const val INTENSITY_STEP = 0.1f
+        private const val DEFAULT_INTENSITY = 0.65f
 
         fun intent(context: Context, action: String): Intent =
             Intent(context, AudioIsolationService::class.java).setAction(action)

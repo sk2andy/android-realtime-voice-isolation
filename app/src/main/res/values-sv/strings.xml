@@ -3,8 +3,8 @@
     <string name="brand_voice">VOICE</string>
     <string name="brand_isolation">ISOLATION</string>
     <string name="tagline">Framhäv röster. Dämpa musik och bakgrundsljud. Direkt på enheten.</string>
-    <string name="output">Utgång</string>
-    <string name="volume_percent">%1$d%%</string>
+    <string name="intensity">Intensitet</string>
+    <string name="intensity_percent">%1$d%%</string>
     <string name="metric_inference">Inferens</string>
     <string name="metric_rtf">RTF</string>
     <string name="metric_input">Ingång</string>
@@ -56,6 +56,6 @@
     <string name="error_attribution_source_field_missing">Kontexten saknar fältet mAttributionSource</string>
     <string name="notification_channel_name">Röstisolering i realtid</string>
     <string name="notification_channel_description">Visas medan medieljud bearbetas i realtid</string>
-    <string name="notification_volume">Volym %1$d%%</string>
+    <string name="notification_intensity">Intensitet %1$d%%</string>
     <string name="notification_stop">Stoppa</string>
 </resources>

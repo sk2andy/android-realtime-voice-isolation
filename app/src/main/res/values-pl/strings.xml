@@ -3,8 +3,8 @@
     <string name="brand_voice">VOICE</string>
     <string name="brand_isolation">ISOLATION</string>
     <string name="tagline">Wyróżniaj głosy. Tłum muzykę i hałas w tle. Bezpośrednio na urządzeniu.</string>
-    <string name="output">Wyjście</string>
-    <string name="volume_percent">%1$d%%</string>
+    <string name="intensity">Intensywność</string>
+    <string name="intensity_percent">%1$d%%</string>
     <string name="metric_inference">Inferencja</string>
     <string name="metric_rtf">RTF</string>
     <string name="metric_input">Wejście</string>
@@ -56,6 +56,6 @@
     <string name="error_attribution_source_field_missing">Kontekst nie zawiera pola mAttributionSource</string>
     <string name="notification_channel_name">Izolacja głosu na żywo</string>
     <string name="notification_channel_description">Widoczne podczas przetwarzania dźwięku multimediów na żywo</string>
-    <string name="notification_volume">Głośność %1$d%%</string>
+    <string name="notification_intensity">Intensywność %1$d%%</string>
     <string name="notification_stop">Zatrzymaj</string>
 </resources>

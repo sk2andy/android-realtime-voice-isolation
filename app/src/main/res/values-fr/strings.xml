@@ -3,8 +3,8 @@
     <string name="brand_voice">VOICE</string>
     <string name="brand_isolation">ISOLATION</string>
     <string name="tagline">Mettez les voix en avant. Atténuez la musique et le bruit de fond. Directement sur l’appareil.</string>
-    <string name="output">Sortie</string>
-    <string name="volume_percent">%1$d%%</string>
+    <string name="intensity">Intensité</string>
+    <string name="intensity_percent">%1$d%%</string>
     <string name="metric_inference">Inférence</string>
     <string name="metric_rtf">RTF</string>
     <string name="metric_input">Entrée</string>
@@ -56,6 +56,6 @@
     <string name="error_attribution_source_field_missing">Le contexte ne contient pas le champ mAttributionSource</string>
     <string name="notification_channel_name">Isolation de la voix en temps réel</string>
     <string name="notification_channel_description">Visible pendant le traitement du son des médias en temps réel</string>
-    <string name="notification_volume">Volume %1$d%%</string>
+    <string name="notification_intensity">Intensité %1$d%%</string>
     <string name="notification_stop">Arrêter</string>
 </resources>
