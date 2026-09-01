@@ -11,6 +11,9 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.ServiceInfo
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import dev.sk2andy.voiceisolation.BuildConfig
@@ -20,6 +23,8 @@ import dev.sk2andy.voiceisolation.audio.ProcessingStats
 import rikka.shizuku.Shizuku
 
 class AudioIsolationService : Service() {
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val autoOffController = AutoOffController(IsolationSettings.DEFAULT_AUTO_OFF_MINUTES)
     private val userServiceArgs by lazy {
         Shizuku.UserServiceArgs(
             ComponentName(BuildConfig.APPLICATION_ID, PrivilegedIsolationUserService::class.java.name),
@@ -60,6 +65,9 @@ class AudioIsolationService : Service() {
                 ProcessingStats(inferenceMs, realTimeFactor, inputDb, underruns),
             )
             updateNotification()
+            if (autoOffController.onAudioLevel(inputDb, SystemClock.elapsedRealtime())) {
+                mainHandler.post { stopIsolation(autoOff = true) }
+            }
         }
     }
 
@@ -103,9 +111,13 @@ class AudioIsolationService : Service() {
     private var bindingRequested = false
     private var isStopping = false
     private var preserveError = false
+    private var autoOffTriggered = false
 
     override fun onCreate() {
         super.onCreate()
+        val settings = IsolationSettings.snapshot(this)
+        IsolationStateStore.updateSettings(settings)
+        autoOffController.updateAutoOffMinutes(settings.autoOffMinutes)
         createNotificationChannel()
     }
 
@@ -115,7 +127,11 @@ class AudioIsolationService : Service() {
             ACTION_INTENSITY_UP -> changeIntensity(INTENSITY_STEP)
             ACTION_INTENSITY_DOWN -> changeIntensity(-INTENSITY_STEP)
             ACTION_SET_INTENSITY -> setIntensity(
-                intent.getFloatExtra(EXTRA_INTENSITY, DEFAULT_INTENSITY),
+                intensity = intent.getFloatExtra(EXTRA_INTENSITY, IsolationSettings.DEFAULT_INTENSITY),
+                persist = intent.getBooleanExtra(EXTRA_PERSIST, true),
+            )
+            ACTION_SET_AUTO_OFF -> setAutoOffMinutes(
+                intent.getIntExtra(EXTRA_AUTO_OFF_MINUTES, IsolationSettings.DEFAULT_AUTO_OFF_MINUTES),
             )
             ACTION_START -> startIsolation()
         }
@@ -131,13 +147,24 @@ class AudioIsolationService : Service() {
         unbindUserService()
         stopForeground(STOP_FOREGROUND_REMOVE)
         if (!preserveError) {
-            IsolationStateStore.updatePhase(IsolationPhase.Idle, getString(R.string.state_ready))
+            val message = if (autoOffTriggered) {
+                getString(R.string.state_auto_off_complete)
+            } else {
+                getString(R.string.state_ready)
+            }
+            IsolationStateStore.updatePhase(IsolationPhase.Idle, message)
         }
         super.onDestroy()
     }
 
     private fun startIsolation() {
         if (userService != null || userServiceBound || bindingRequested) return
+        isStopping = false
+        autoOffTriggered = false
+        val settings = IsolationSettings.snapshot(this)
+        IsolationStateStore.updateSettings(settings)
+        autoOffController.updateAutoOffMinutes(settings.autoOffMinutes)
+        autoOffController.reset()
         startForeground(
             NOTIFICATION_ID,
             createNotification(),
@@ -175,22 +202,34 @@ class AudioIsolationService : Service() {
         }
     }
 
-    private fun stopIsolation() {
+    private fun stopIsolation(autoOff: Boolean = false) {
         if (isStopping) return
         isStopping = true
+        autoOffTriggered = autoOff
         IsolationStateStore.updatePhase(IsolationPhase.Stopping, getString(R.string.state_releasing_audio_route))
         runCatching { userService?.stop() }
         stopSelf()
     }
 
     private fun changeIntensity(delta: Float) {
-        setIntensity(IsolationStateStore.state.value.intensity + delta)
+        setIntensity(IsolationStateStore.state.value.intensity + delta, persist = true)
     }
 
-    private fun setIntensity(intensity: Float) {
-        val normalized = intensity.coerceIn(0f, 1f)
-        IsolationStateStore.updateIntensity(normalized)
+    private fun setIntensity(intensity: Float, persist: Boolean) {
+        val normalized = IsolationSettings.normalizeIntensity(intensity)
+        if (persist) {
+            IsolationStateStore.updateSettings(IsolationSettings.setCustomIntensity(this, normalized))
+        } else {
+            IsolationStateStore.updateIntensity(normalized)
+        }
         runCatching { userService?.setIntensity(normalized) }
+        updateNotification()
+    }
+
+    private fun setAutoOffMinutes(minutes: Int) {
+        val normalized = IsolationSettings.setAutoOffMinutes(this, minutes)
+        IsolationStateStore.updateAutoOffMinutes(normalized)
+        autoOffController.updateAutoOffMinutes(normalized)
         updateNotification()
     }
 
@@ -234,7 +273,11 @@ class AudioIsolationService : Service() {
         val intensityUp = actionPendingIntent(ACTION_INTENSITY_UP, 3)
         val detail = if (state.phase == IsolationPhase.Running) {
             val rtf = state.stats?.realTimeFactor?.let { " · RTF %.2f".format(it) }.orEmpty()
-            getString(R.string.notification_intensity, (state.intensity * 100).toInt()) + rtf
+            getString(
+                R.string.notification_preset_intensity,
+                state.presetLabel(this),
+                (state.intensity * 100).toInt(),
+            ) + rtf
         } else {
             state.message
         }
@@ -272,15 +315,16 @@ class AudioIsolationService : Service() {
         const val ACTION_INTENSITY_UP = "dev.sk2andy.voiceisolation.action.INTENSITY_UP"
         const val ACTION_INTENSITY_DOWN = "dev.sk2andy.voiceisolation.action.INTENSITY_DOWN"
         const val ACTION_SET_INTENSITY = "dev.sk2andy.voiceisolation.action.SET_INTENSITY"
+        const val ACTION_SET_AUTO_OFF = "dev.sk2andy.voiceisolation.action.SET_AUTO_OFF"
         const val EXTRA_INTENSITY = "intensity"
+        const val EXTRA_PERSIST = "persist"
+        const val EXTRA_AUTO_OFF_MINUTES = "auto_off_minutes"
 
         private const val TAG = "AudioIsolationService"
         private const val CHANNEL_ID = "voice_isolation_active"
         private const val NOTIFICATION_ID = 4101
         private const val MINIMUM_SHIZUKU_VERSION = 13
         private const val INTENSITY_STEP = 0.1f
-        private const val DEFAULT_INTENSITY = 0.65f
-
         fun intent(context: Context, action: String): Intent =
             Intent(context, AudioIsolationService::class.java).setAction(action)
     }

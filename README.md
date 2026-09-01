@@ -8,6 +8,9 @@ Android app that captures regular media and game audio through Shizuku, processe
 - A Quick Settings tile starts or stops isolation without opening the app; long-pressing the tile opens the app.
 - A persistent notification shows the active service and provides intensity and stop actions.
 - The intensity control ranges from the latency-aligned original signal at 0% to fully isolated audio at 100%.
+- Podcast, Film, Gaming, Maximum, Custom, and named user presets persist across app restarts and appear in the notification and Quick Settings tile.
+- An auto-off slider can stop isolation after 5–60 minutes without captured audio, or the feature can be disabled.
+- An opt-in, token-protected automation API supports start, stop, preset, and intensity commands from Tasker or ADB.
 - Full isolation compensates the model's measured 2.3 dB voice attenuation while retaining background suppression.
 - Processing stays entirely on-device; the app intentionally has no internet permission.
 - A privileged AOSP `AudioPolicy` loopback route replaces the original mix without changing the global media volume.
@@ -23,6 +26,42 @@ Android app that captures regular media and game audio through Shizuku, processe
 6. Optional: add **Voice Isolation** from the Quick Settings edit screen for one-tap access.
 
 Once Shizuku is running and permission has been granted, starting the app is fully automatic. Without root, the app cannot start Shizuku by itself after a device reboot.
+
+## Tasker and automation
+
+Enable **Automation API** in the app and copy its per-install token. The exported receiver has no intent filter; callers must target it explicitly and include that token. Keep the token private.
+
+Actions:
+
+| Action | Extra |
+|---|---|
+| `dev.sk2andy.voiceisolation.automation.START` | `token` |
+| `dev.sk2andy.voiceisolation.automation.STOP` | `token` |
+| `dev.sk2andy.voiceisolation.automation.SET_PRESET` | `token`, `preset`: `podcast`, `film`, `gaming`, `maximum`, `custom`, or a saved preset name |
+| `dev.sk2andy.voiceisolation.automation.SET_INTENSITY` | `token`, `intensity`: number from `0.0` to `1.0` |
+
+Configure Tasker's **Send Intent** action with target **Broadcast Receiver**, package `dev.sk2andy.voiceisolation`, class `dev.sk2andy.voiceisolation.service.AutomationReceiver`, and one action from the table. Example ADB commands:
+
+```bash
+adb shell am broadcast \
+  -n dev.sk2andy.voiceisolation/.service.AutomationReceiver \
+  -a dev.sk2andy.voiceisolation.automation.START \
+  --es token YOUR_TOKEN
+
+adb shell am broadcast \
+  -n dev.sk2andy.voiceisolation/.service.AutomationReceiver \
+  -a dev.sk2andy.voiceisolation.automation.SET_PRESET \
+  --es token YOUR_TOKEN \
+  --es preset film
+
+adb shell am broadcast \
+  -n dev.sk2andy.voiceisolation/.service.AutomationReceiver \
+  -a dev.sk2andy.voiceisolation.automation.SET_INTENSITY \
+  --es token YOUR_TOKEN \
+  --ef intensity 0.8
+```
+
+Android may reject automatic starts while the app is background-restricted. In that case, exempt Voice Isolation from battery restrictions or trigger start from a user-initiated Tasker action. Shizuku must already be running and authorized.
 
 ## Languages
 

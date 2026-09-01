@@ -5,12 +5,35 @@
     <string name="tagline">Highlight voices. Reduce music and background noise. On-device.</string>
     <string name="intensity">Intensity</string>
     <string name="intensity_percent">%1$d%%</string>
+    <string name="presets">Presets</string>
+    <string name="presets_description">Choose a tuned mix. Moving the intensity slider saves your Custom preset.</string>
+    <string name="preset_podcast">Podcast</string>
+    <string name="preset_film">Film</string>
+    <string name="preset_gaming">Gaming</string>
+    <string name="preset_maximum">Maximum</string>
+    <string name="preset_custom">Custom</string>
+    <string name="preset_custom_percent">Custom %1$d%%</string>
+    <string name="preset_name_percent">%1$s %2$d%%</string>
+    <string name="save_preset_title">Save custom preset</string>
+    <string name="preset_name">Preset name</string>
+    <string name="auto_off">Auto-off</string>
+    <string name="auto_off_disabled">Off</string>
+    <string name="auto_off_minutes">%1$d min</string>
+    <string name="auto_off_description">Stops isolation after captured media has been silent for this long.</string>
     <string name="metric_inference">Inference</string>
     <string name="metric_rtf">RTF</string>
     <string name="metric_input">Input</string>
     <string name="action_start">START</string>
     <string name="action_stop">STOP</string>
     <string name="action_open_shizuku">OPEN SHIZUKU</string>
+    <string name="action_copy_token">COPY TOKEN</string>
+    <string name="action_save_preset">SAVE CURRENT AS PRESET</string>
+    <string name="action_delete_preset">DELETE PRESET</string>
+    <string name="action_save">Save</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="automation_api">Automation API</string>
+    <string name="automation_api_description">Allow explicit Tasker commands protected by a per-install token.</string>
+    <string name="automation_token">Automation token</string>
     <string name="shizuku_connected">Shizuku connected</string>
     <string name="shizuku_offline">Shizuku offline</string>
     <string name="requirements_title">REQUIREMENTS</string>
@@ -27,6 +50,7 @@
     <string name="phase_error">ERROR</string>
 
     <string name="state_ready">Ready</string>
+    <string name="state_auto_off_complete">Stopped automatically because no audio was detected</string>
     <string name="state_connecting_shizuku">Connecting to Shizuku</string>
     <string name="state_starting_privileged_service">Starting privileged audio service</string>
     <string name="state_releasing_audio_route">Releasing audio route</string>
@@ -60,6 +84,7 @@
 
     <string name="notification_channel_name">Live voice isolation</string>
     <string name="notification_channel_description">Visible while media audio is processed live</string>
-    <string name="notification_intensity">Intensity %1$d%%</string>
+    <string name="notification_preset_intensity">%1$s · %2$d%%</string>
     <string name="notification_stop">Stop</string>
+    <string name="tile_running_preset">Running · %1$s</string>
 </resources>

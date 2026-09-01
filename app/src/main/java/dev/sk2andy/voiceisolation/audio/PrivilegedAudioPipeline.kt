@@ -95,11 +95,13 @@ internal class PrivilegedAudioPipeline(
         val mixedFloat = FloatArray(StftProcessor.HOP_SIZE)
         val intensityMixer = IsolationIntensityMixer(StftProcessor.HOP_SIZE)
         var frameCounter = 0
+        var maximumInputDb = Float.NEGATIVE_INFINITY
 
         try {
             while (currentCoroutineContext().isActive) {
                 readFrame(record, inputPcm)
                 PcmConverter.toFloat(inputPcm, inputFloat)
+                maximumInputDb = maxOf(maximumInputDb, calculateDb(inputFloat))
                 val isolatedFloat = model.process(inputFloat)
                 intensityMixer.mix(inputFloat, isolatedFloat, mixedFloat, isolationIntensity)
                 PcmConverter.toShort(mixedFloat, outputPcm)
@@ -112,10 +114,11 @@ internal class PrivilegedAudioPipeline(
                         ProcessingStats(
                             inferenceMs = inferenceMs,
                             realTimeFactor = inferenceMs / FRAME_DURATION_MS,
-                            inputDb = calculateDb(inputFloat),
+                            inputDb = maximumInputDb,
                             underruns = track.underrunCount,
                         ),
                     )
+                    maximumInputDb = Float.NEGATIVE_INFINITY
                 }
             }
         } catch (error: Throwable) {

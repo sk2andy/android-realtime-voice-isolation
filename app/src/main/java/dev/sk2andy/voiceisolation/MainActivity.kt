@@ -1,10 +1,14 @@
 package dev.sk2andy.voiceisolation
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipDescription
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.PersistableBundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -20,18 +24,25 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -45,9 +56,14 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.sk2andy.voiceisolation.service.AudioIsolationService
 import dev.sk2andy.voiceisolation.service.IsolationPhase
+import dev.sk2andy.voiceisolation.service.IsolationPreset
+import dev.sk2andy.voiceisolation.service.IsolationSettings
+import dev.sk2andy.voiceisolation.service.IsolationSettingsSnapshot
 import dev.sk2andy.voiceisolation.service.IsolationStateStore
 import dev.sk2andy.voiceisolation.service.IsolationUiState
+import dev.sk2andy.voiceisolation.service.UserIsolationPreset
 import rikka.shizuku.Shizuku
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     private var shizukuReady by mutableStateOf(false)
@@ -92,6 +108,7 @@ class MainActivity : ComponentActivity() {
         Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
         Shizuku.addBinderDeadListener(binderDeadListener)
         Shizuku.addRequestPermissionResultListener(permissionResultListener)
+        IsolationStateStore.updateSettings(IsolationSettings.snapshot(this))
         refreshShizukuState()
 
         setContent {
@@ -104,6 +121,14 @@ class MainActivity : ComponentActivity() {
                     onStop = ::stopIsolation,
                     onOpenShizuku = ::openShizuku,
                     onIntensityChange = ::setIntensity,
+                    onIntensityChangeFinished = ::persistIntensity,
+                    onPresetSelected = ::setPreset,
+                    onUserPresetSelected = ::setUserPreset,
+                    onSaveUserPreset = ::saveUserPreset,
+                    onDeleteUserPreset = ::deleteUserPreset,
+                    onAutoOffChange = ::setAutoOffMinutes,
+                    onAutomationEnabledChange = ::setAutomationEnabled,
+                    onCopyAutomationToken = ::copyAutomationToken,
                 )
             }
         }
@@ -189,13 +214,91 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun setIntensity(intensity: Float) {
-        IsolationStateStore.updateIntensity(intensity)
-        if (IsolationStateStore.state.value.phase == IsolationPhase.Running) {
+        IsolationStateStore.updatePreset(IsolationPreset.Custom, intensity)
+        applyIntensityToActiveService(intensity)
+    }
+
+    private fun persistIntensity() {
+        val settings = IsolationSettings.setCustomIntensity(
+            this,
+            IsolationStateStore.state.value.intensity,
+        )
+        IsolationStateStore.updateSettings(settings)
+    }
+
+    private fun setPreset(preset: IsolationPreset) {
+        applySettings(IsolationSettings.setPreset(this, preset))
+    }
+
+    private fun setUserPreset(id: String) {
+        applySettings(IsolationSettings.setUserPreset(this, id))
+    }
+
+    private fun saveUserPreset(name: String) {
+        applySettings(
+            IsolationSettings.saveUserPreset(
+                context = this,
+                name = name,
+                intensity = IsolationStateStore.state.value.intensity,
+            ),
+        )
+    }
+
+    private fun deleteUserPreset(id: String) {
+        applySettings(IsolationSettings.deleteUserPreset(this, id))
+    }
+
+    private fun applySettings(settings: IsolationSettingsSnapshot) {
+        IsolationStateStore.updateSettings(settings)
+        applyIntensityToActiveService(settings.intensity)
+    }
+
+    private fun applyIntensityToActiveService(intensity: Float) {
+        if (
+            IsolationStateStore.state.value.phase in setOf(
+                IsolationPhase.Connecting,
+                IsolationPhase.LoadingModel,
+                IsolationPhase.Running,
+            )
+        ) {
             startService(
                 AudioIsolationService.intent(this, AudioIsolationService.ACTION_SET_INTENSITY)
-                    .putExtra(AudioIsolationService.EXTRA_INTENSITY, intensity),
+                    .putExtra(AudioIsolationService.EXTRA_INTENSITY, intensity)
+                    .putExtra(AudioIsolationService.EXTRA_PERSIST, false),
             )
         }
+    }
+
+    private fun setAutoOffMinutes(minutes: Int) {
+        val normalized = IsolationSettings.setAutoOffMinutes(this, minutes)
+        IsolationStateStore.updateAutoOffMinutes(normalized)
+        if (
+            IsolationStateStore.state.value.phase in setOf(
+                IsolationPhase.Connecting,
+                IsolationPhase.LoadingModel,
+                IsolationPhase.Running,
+            )
+        ) {
+            startService(
+                AudioIsolationService.intent(this, AudioIsolationService.ACTION_SET_AUTO_OFF)
+                    .putExtra(AudioIsolationService.EXTRA_AUTO_OFF_MINUTES, normalized),
+            )
+        }
+    }
+
+    private fun setAutomationEnabled(enabled: Boolean) {
+        IsolationStateStore.updateSettings(IsolationSettings.setAutomationEnabled(this, enabled))
+    }
+
+    private fun copyAutomationToken() {
+        val token = IsolationStateStore.state.value.automationToken
+        if (token.isBlank()) return
+        val clip = ClipData.newPlainText(getString(R.string.automation_token), token).apply {
+            description.extras = PersistableBundle().apply {
+                putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
+            }
+        }
+        getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)
     }
 
     private fun refreshShizukuState() {
@@ -256,6 +359,14 @@ private fun MainScreen(
     onStop: () -> Unit,
     onOpenShizuku: () -> Unit,
     onIntensityChange: (Float) -> Unit,
+    onIntensityChangeFinished: () -> Unit,
+    onPresetSelected: (IsolationPreset) -> Unit,
+    onUserPresetSelected: (String) -> Unit,
+    onSaveUserPreset: (String) -> Unit,
+    onDeleteUserPreset: (String) -> Unit,
+    onAutoOffChange: (Int) -> Unit,
+    onAutomationEnabledChange: (Boolean) -> Unit,
+    onCopyAutomationToken: () -> Unit,
 ) {
     val active = state.phase in setOf(
         IsolationPhase.Connecting,
@@ -289,6 +400,22 @@ private fun MainScreen(
 
         StatusCard(state = state, shizukuReady = shizukuReady)
 
+        PresetsCard(
+            selectedPreset = state.preset,
+            selectedUserPresetId = state.selectedUserPresetId,
+            customIntensity = state.customIntensity,
+            userPresets = state.userPresets,
+            onPresetSelected = onPresetSelected,
+            onUserPresetSelected = onUserPresetSelected,
+            onSaveUserPreset = onSaveUserPreset,
+            onDeleteUserPreset = onDeleteUserPreset,
+        )
+
+        AutoOffCard(
+            minutes = state.autoOffMinutes,
+            onMinutesChange = onAutoOffChange,
+        )
+
         if (state.phase == IsolationPhase.Running) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = Surface),
@@ -302,7 +429,11 @@ private fun MainScreen(
                             color = Mint,
                         )
                     }
-                    Slider(value = state.intensity, onValueChange = onIntensityChange)
+                    Slider(
+                        value = state.intensity,
+                        onValueChange = onIntensityChange,
+                        onValueChangeFinished = onIntensityChangeFinished,
+                    )
                     state.stats?.let { stats ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Metric(stringResource(R.string.metric_inference), "%.1f ms".format(stats.inferenceMs))
@@ -313,6 +444,13 @@ private fun MainScreen(
                 }
             }
         }
+
+        AutomationCard(
+            enabled = state.automationEnabled,
+            token = state.automationToken,
+            onEnabledChange = onAutomationEnabledChange,
+            onCopyToken = onCopyAutomationToken,
+        )
 
         Button(
             onClick = if (active) onStop else onStart,
@@ -345,6 +483,194 @@ private fun MainScreen(
         }
 
         SetupCard()
+    }
+}
+
+@Composable
+private fun PresetsCard(
+    selectedPreset: IsolationPreset,
+    selectedUserPresetId: String?,
+    customIntensity: Float,
+    userPresets: List<UserIsolationPreset>,
+    onPresetSelected: (IsolationPreset) -> Unit,
+    onUserPresetSelected: (String) -> Unit,
+    onSaveUserPreset: (String) -> Unit,
+    onDeleteUserPreset: (String) -> Unit,
+) {
+    var showSaveDialog by remember { mutableStateOf(false) }
+    var presetName by remember { mutableStateOf("") }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Surface),
+        shape = RoundedCornerShape(20.dp),
+    ) {
+        Column(
+            Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(stringResource(R.string.presets), fontWeight = FontWeight.Bold)
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                IsolationPreset.entries.forEach { preset ->
+                    val label = if (preset == IsolationPreset.Custom) {
+                        stringResource(
+                            R.string.preset_custom_percent,
+                            (customIntensity * 100).roundToInt(),
+                        )
+                    } else {
+                        stringResource(preset.labelResource)
+                    }
+                    FilterChip(
+                        selected = selectedUserPresetId == null && selectedPreset == preset,
+                        onClick = { onPresetSelected(preset) },
+                        label = { Text(label) },
+                    )
+                }
+                userPresets.forEach { preset ->
+                    FilterChip(
+                        selected = selectedUserPresetId == preset.id,
+                        onClick = { onUserPresetSelected(preset.id) },
+                        label = {
+                            Text(
+                                stringResource(
+                                    R.string.preset_name_percent,
+                                    preset.name,
+                                    (preset.intensity * 100).roundToInt(),
+                                ),
+                            )
+                        },
+                    )
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { showSaveDialog = true }) {
+                    Text(stringResource(R.string.action_save_preset))
+                }
+                selectedUserPresetId?.let { id ->
+                    TextButton(onClick = { onDeleteUserPreset(id) }) {
+                        Text(stringResource(R.string.action_delete_preset))
+                    }
+                }
+            }
+            Text(
+                stringResource(R.string.presets_description),
+                color = Muted,
+                fontSize = 13.sp,
+                lineHeight = 19.sp,
+            )
+        }
+    }
+
+    if (showSaveDialog) {
+        AlertDialog(
+            onDismissRequest = { showSaveDialog = false },
+            title = { Text(stringResource(R.string.save_preset_title)) },
+            text = {
+                OutlinedTextField(
+                    value = presetName,
+                    onValueChange = { presetName = it },
+                    label = { Text(stringResource(R.string.preset_name)) },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = presetName.isNotBlank(),
+                    onClick = {
+                        onSaveUserPreset(presetName)
+                        presetName = ""
+                        showSaveDialog = false
+                    },
+                ) {
+                    Text(stringResource(R.string.action_save))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSaveDialog = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun AutomationCard(
+    enabled: Boolean,
+    token: String,
+    onEnabledChange: (Boolean) -> Unit,
+    onCopyToken: () -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Surface),
+        shape = RoundedCornerShape(20.dp),
+    ) {
+        Column(
+            Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.automation_api), fontWeight = FontWeight.Bold)
+                    Text(
+                        stringResource(R.string.automation_api_description),
+                        color = Muted,
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp,
+                    )
+                }
+                Switch(checked = enabled, onCheckedChange = onEnabledChange)
+            }
+            if (enabled) {
+                Text(stringResource(R.string.automation_token), color = Muted, fontSize = 12.sp)
+                Text(token, color = SoftWhite, fontSize = 12.sp)
+                TextButton(onClick = onCopyToken) {
+                    Text(stringResource(R.string.action_copy_token))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AutoOffCard(minutes: Int, onMinutesChange: (Int) -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Surface),
+        shape = RoundedCornerShape(20.dp),
+    ) {
+        Column(Modifier.padding(20.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(stringResource(R.string.auto_off), fontWeight = FontWeight.Bold)
+                Text(
+                    if (minutes == 0) {
+                        stringResource(R.string.auto_off_disabled)
+                    } else {
+                        stringResource(R.string.auto_off_minutes, minutes)
+                    },
+                    color = Mint,
+                )
+            }
+            Slider(
+                value = minutes.toFloat(),
+                onValueChange = {
+                    onMinutesChange(IsolationSettings.normalizeAutoOffMinutes(it.roundToInt()))
+                },
+                valueRange = 0f..IsolationSettings.MAX_AUTO_OFF_MINUTES.toFloat(),
+                steps = 11,
+            )
+            Text(
+                stringResource(R.string.auto_off_description),
+                color = Muted,
+                fontSize = 13.sp,
+                lineHeight = 19.sp,
+            )
+        }
     }
 }
 

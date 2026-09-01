@@ -1,5 +1,6 @@
 package dev.sk2andy.voiceisolation.service
 
+import android.content.Context
 import dev.sk2andy.voiceisolation.audio.ProcessingStats
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,14 +16,21 @@ enum class IsolationPhase {
     Error,
 }
 
-data class IsolationUiState(
+internal data class IsolationUiState(
     val phase: IsolationPhase = IsolationPhase.Idle,
     val message: String = "",
-    val intensity: Float = 0.65f,
+    val intensity: Float = IsolationSettings.DEFAULT_INTENSITY,
+    val customIntensity: Float = IsolationSettings.DEFAULT_INTENSITY,
+    val preset: IsolationPreset = IsolationPreset.Film,
+    val selectedUserPresetId: String? = null,
+    val userPresets: List<UserIsolationPreset> = emptyList(),
+    val autoOffMinutes: Int = IsolationSettings.DEFAULT_AUTO_OFF_MINUTES,
+    val automationEnabled: Boolean = false,
+    val automationToken: String = "",
     val stats: ProcessingStats? = null,
 )
 
-object IsolationStateStore {
+internal object IsolationStateStore {
     private val mutableState = MutableStateFlow(IsolationUiState())
     val state: StateFlow<IsolationUiState> = mutableState.asStateFlow()
 
@@ -37,10 +45,52 @@ object IsolationStateStore {
     }
 
     fun updateIntensity(intensity: Float) {
-        mutableState.update { it.copy(intensity = intensity.coerceIn(0f, 1f)) }
+        mutableState.update { it.copy(intensity = IsolationSettings.normalizeIntensity(intensity)) }
+    }
+
+    fun updatePreset(preset: IsolationPreset, intensity: Float) {
+        mutableState.update {
+            val normalizedIntensity = IsolationSettings.normalizeIntensity(intensity)
+            it.copy(
+                intensity = normalizedIntensity,
+                customIntensity = if (preset == IsolationPreset.Custom) {
+                    normalizedIntensity
+                } else {
+                    it.customIntensity
+                },
+                preset = preset,
+                selectedUserPresetId = null,
+            )
+        }
+    }
+
+    fun updateAutoOffMinutes(minutes: Int) {
+        mutableState.update {
+            it.copy(autoOffMinutes = IsolationSettings.normalizeAutoOffMinutes(minutes))
+        }
+    }
+
+    fun updateSettings(settings: IsolationSettingsSnapshot) {
+        mutableState.update {
+            it.copy(
+                intensity = settings.intensity,
+                customIntensity = settings.customIntensity,
+                preset = settings.preset,
+                selectedUserPresetId = settings.selectedUserPresetId,
+                userPresets = settings.userPresets,
+                autoOffMinutes = settings.autoOffMinutes,
+                automationEnabled = settings.automationEnabled,
+                automationToken = settings.automationToken,
+            )
+        }
     }
 
     fun updateStats(stats: ProcessingStats) {
         mutableState.update { it.copy(stats = stats) }
     }
 }
+
+internal fun IsolationUiState.presetLabel(context: Context): String =
+    selectedUserPresetId
+        ?.let { id -> userPresets.firstOrNull { it.id == id }?.name }
+        ?: context.getString(preset.labelResource)

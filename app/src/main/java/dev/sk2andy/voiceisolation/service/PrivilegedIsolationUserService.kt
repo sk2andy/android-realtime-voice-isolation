@@ -27,10 +27,16 @@ class PrivilegedIsolationUserService @Keep constructor(
     @Volatile
     private var running = false
 
+    @Volatile
+    private var requestedIntensity = IsolationSettings.DEFAULT_INTENSITY
+
     private var callback: IIsolationCallback? = null
+
+    @Volatile
     private var pipeline: PrivilegedAudioPipeline? = null
 
     override fun start(intensity: Float, callback: IIsolationCallback) {
+        requestedIntensity = IsolationSettings.normalizeIntensity(intensity)
         this.callback = callback
         scope.launch {
             mutex.withLock {
@@ -61,12 +67,15 @@ class PrivilegedIsolationUserService @Keep constructor(
                 )
 
                 try {
-                    createdPipeline.start(intensity)
+                    // Publish pipeline before startup so concurrent preset changes update pending value.
                     pipeline = createdPipeline
+                    createdPipeline.start(requestedIntensity)
+                    createdPipeline.setIntensity(requestedIntensity)
                     running = true
                     notifyState(IsolationProtocol.RUNNING, context.getString(R.string.state_media_isolated))
                 } catch (error: Throwable) {
                     createdPipeline.close()
+                    pipeline = null
                     running = false
                     notifyState(IsolationProtocol.ERROR, error.userMessage())
                 }
@@ -88,7 +97,9 @@ class PrivilegedIsolationUserService @Keep constructor(
     }
 
     override fun setIntensity(intensity: Float) {
-        pipeline?.setIntensity(intensity)
+        val normalized = IsolationSettings.normalizeIntensity(intensity)
+        requestedIntensity = normalized
+        pipeline?.setIntensity(normalized)
     }
 
     override fun isRunning(): Boolean = running

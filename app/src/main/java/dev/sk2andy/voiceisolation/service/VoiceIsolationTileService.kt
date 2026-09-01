@@ -118,7 +118,14 @@ class VoiceIsolationTileService : TileService() {
 
     private fun updateTile(state: IsolationUiState) {
         val tile = qsTile ?: return
-        val subtitle = getString(state.phase.subtitleResource())
+        val subtitle = if (state.phase == IsolationPhase.Running) {
+            getString(
+                R.string.tile_running_preset,
+                state.presetLabel(this),
+            )
+        } else {
+            getString(state.phase.subtitleResource())
+        }
         tile.label = getString(R.string.app_name)
         tile.subtitle = subtitle
         tile.contentDescription = "${tile.label}, $subtitle"
