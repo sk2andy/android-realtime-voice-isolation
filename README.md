@@ -1,17 +1,19 @@
 # Voice Isolation for Android
 
-Android app that captures regular media and game audio through Shizuku, processes it with an on-device streaming ML model, and blends the original and isolated signals at an adjustable intensity.
+Android app that captures regular media and game audio through Shizuku and processes it with an on-device streaming ML model, with independent background reduction and voice boost.
 
 ## What works
 
 - One tap on **START** connects to the already running Shizuku service, loads GTCRN, and configures the audio route.
 - A Quick Settings tile starts or stops isolation without opening the app; long-pressing the tile opens the app.
 - A persistent notification shows the active service and provides intensity and stop actions.
-- The intensity control ranges from the latency-aligned original signal at 0% to fully isolated audio at 100%.
-- Podcast, Film, Gaming, Maximum, Custom, and named user presets persist across app restarts and appear in the notification and Quick Settings tile.
+- **Reduce background** controls attenuation of the estimated background from 0–100%; **Boost voice** independently raises the estimated voice level from 0 to about +6 dB. At 0% reduction and 0 dB boost, the latency-aligned original is preserved.
+- Optional **Auto mode** uses GTCRN output energy relative to the aligned original to estimate speech. It holds through short pauses and smoothly softens background reduction between dialogs. This is a speech estimate, not a separate speech-recognition model; vocals and speech-like instruments can trigger it.
+- Adaptive playback increases the active buffer when new underruns occur, within a preallocated limit. The UI displays underruns, actual buffer duration, and Normal / Buffered / Safe status. A larger buffer can absorb scheduling jitter but adds latency and cannot fix sustained processing slower than real time.
+- Podcast, Film, Gaming, Maximum, Custom, and named user presets persist across app restarts and appear in the notification and Quick Settings tile. Named presets now include both controls and Auto mode. Existing presets retain their previous sound; built-in presets keep Auto mode off.
 - An auto-off slider can stop isolation after 5–60 minutes without captured audio, or the feature can be disabled.
 - An opt-in, token-protected automation API supports start, stop, preset, and intensity commands from Tasker or ADB.
-- Full isolation compensates the model's measured 2.3 dB voice attenuation while retaining background suppression.
+- The Maximum preset compensates the model's measured 2.3 dB voice attenuation while retaining background suppression. The limiter protects output peaks when boosting voice.
 - Processing stays entirely on-device; the app intentionally has no internet permission.
 - A privileged AOSP `AudioPolicy` loopback route replaces the original mix without changing the global media volume.
 - Stopping releases `AudioRecord`, `AudioTrack`, ONNX Runtime, and the dynamic audio policy.
@@ -62,6 +64,8 @@ adb shell am broadcast \
 ```
 
 Android may reject automatic starts while the app is background-restricted. In that case, exempt Voice Isolation from battery restrictions or trigger start from a user-initiated Tasker action. Shizuku must already be running and authorized.
+
+`SET_INTENSITY` changes background reduction while preserving voice boost and Auto mode. `SET_PRESET` restores the complete saved mix; built-in presets restore their original tuning with Auto mode off.
 
 ## Languages
 

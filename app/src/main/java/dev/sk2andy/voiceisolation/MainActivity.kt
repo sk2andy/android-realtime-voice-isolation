@@ -64,6 +64,7 @@ import dev.sk2andy.voiceisolation.service.IsolationUiState
 import dev.sk2andy.voiceisolation.service.UserIsolationPreset
 import rikka.shizuku.Shizuku
 import kotlin.math.roundToInt
+import kotlin.math.log10
 
 class MainActivity : ComponentActivity() {
     private var shizukuReady by mutableStateOf(false)
@@ -122,6 +123,8 @@ class MainActivity : ComponentActivity() {
                     onOpenShizuku = ::openShizuku,
                     onIntensityChange = ::setIntensity,
                     onIntensityChangeFinished = ::persistIntensity,
+                    onVoiceGainChange = ::setVoiceGain,
+                    onAutoModeChange = ::setAutoMode,
                     onPresetSelected = ::setPreset,
                     onUserPresetSelected = ::setUserPreset,
                     onSaveUserPreset = ::saveUserPreset,
@@ -215,15 +218,29 @@ class MainActivity : ComponentActivity() {
 
     private fun setIntensity(intensity: Float) {
         IsolationStateStore.updatePreset(IsolationPreset.Custom, intensity)
-        applyIntensityToActiveService(intensity)
+        applyMixToActiveService()
     }
 
     private fun persistIntensity() {
-        val settings = IsolationSettings.setCustomIntensity(
+        val state = IsolationStateStore.state.value
+        val settings = IsolationSettings.setCustomMix(
             this,
-            IsolationStateStore.state.value.intensity,
+            state.intensity,
+            state.voiceGain,
+            state.autoMode,
         )
         IsolationStateStore.updateSettings(settings)
+    }
+
+    private fun setVoiceGain(gain: Float) {
+        IsolationStateStore.updateVoiceGain(gain)
+        applyMixToActiveService()
+    }
+
+    private fun setAutoMode(enabled: Boolean) {
+        IsolationStateStore.updateAutoMode(enabled)
+        persistIntensity()
+        applyMixToActiveService()
     }
 
     private fun setPreset(preset: IsolationPreset) {
@@ -240,6 +257,8 @@ class MainActivity : ComponentActivity() {
                 context = this,
                 name = name,
                 intensity = IsolationStateStore.state.value.intensity,
+                voiceGain = IsolationStateStore.state.value.voiceGain,
+                autoMode = IsolationStateStore.state.value.autoMode,
             ),
         )
     }
@@ -250,10 +269,10 @@ class MainActivity : ComponentActivity() {
 
     private fun applySettings(settings: IsolationSettingsSnapshot) {
         IsolationStateStore.updateSettings(settings)
-        applyIntensityToActiveService(settings.intensity)
+        applyMixToActiveService()
     }
 
-    private fun applyIntensityToActiveService(intensity: Float) {
+    private fun applyMixToActiveService() {
         if (
             IsolationStateStore.state.value.phase in setOf(
                 IsolationPhase.Connecting,
@@ -262,9 +281,7 @@ class MainActivity : ComponentActivity() {
             )
         ) {
             startService(
-                AudioIsolationService.intent(this, AudioIsolationService.ACTION_SET_INTENSITY)
-                    .putExtra(AudioIsolationService.EXTRA_INTENSITY, intensity)
-                    .putExtra(AudioIsolationService.EXTRA_PERSIST, false),
+                AudioIsolationService.intent(this, AudioIsolationService.ACTION_SET_MIX),
             )
         }
     }
@@ -360,6 +377,8 @@ private fun MainScreen(
     onOpenShizuku: () -> Unit,
     onIntensityChange: (Float) -> Unit,
     onIntensityChangeFinished: () -> Unit,
+    onVoiceGainChange: (Float) -> Unit,
+    onAutoModeChange: (Boolean) -> Unit,
     onPresetSelected: (IsolationPreset) -> Unit,
     onUserPresetSelected: (String) -> Unit,
     onSaveUserPreset: (String) -> Unit,
@@ -416,34 +435,13 @@ private fun MainScreen(
             onMinutesChange = onAutoOffChange,
         )
 
-        if (state.phase == IsolationPhase.Running) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Surface),
-                shape = RoundedCornerShape(20.dp),
-            ) {
-                Column(Modifier.padding(20.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(stringResource(R.string.intensity), fontWeight = FontWeight.Bold)
-                        Text(
-                            stringResource(R.string.intensity_percent, (state.intensity * 100).toInt()),
-                            color = Mint,
-                        )
-                    }
-                    Slider(
-                        value = state.intensity,
-                        onValueChange = onIntensityChange,
-                        onValueChangeFinished = onIntensityChangeFinished,
-                    )
-                    state.stats?.let { stats ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Metric(stringResource(R.string.metric_inference), "%.1f ms".format(stats.inferenceMs))
-                            Metric(stringResource(R.string.metric_rtf), "%.2f".format(stats.realTimeFactor))
-                            Metric(stringResource(R.string.metric_input), "%.0f dB".format(stats.inputDb))
-                        }
-                    }
-                }
-            }
-        }
+        AudioMixCard(
+            state = state,
+            onIntensityChange = onIntensityChange,
+            onVoiceGainChange = onVoiceGainChange,
+            onChangeFinished = onIntensityChangeFinished,
+            onAutoModeChange = onAutoModeChange,
+        )
 
         AutomationCard(
             enabled = state.automationEnabled,
@@ -483,6 +481,81 @@ private fun MainScreen(
         }
 
         SetupCard()
+    }
+}
+
+@Composable
+private fun AudioMixCard(
+    state: IsolationUiState,
+    onIntensityChange: (Float) -> Unit,
+    onVoiceGainChange: (Float) -> Unit,
+    onChangeFinished: () -> Unit,
+    onAutoModeChange: (Boolean) -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Surface),
+        shape = RoundedCornerShape(20.dp),
+    ) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(stringResource(R.string.background_reduction), fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.intensity_percent, (state.intensity * 100).roundToInt()), color = Mint)
+            }
+            Slider(
+                value = state.intensity,
+                onValueChange = onIntensityChange,
+                onValueChangeFinished = onChangeFinished,
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(stringResource(R.string.voice_boost), fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.voice_boost_db, 20f * log10(state.voiceGain)), color = Mint)
+            }
+            Slider(
+                value = state.voiceGain,
+                valueRange = 1f..2f,
+                onValueChange = onVoiceGainChange,
+                onValueChangeFinished = onChangeFinished,
+            )
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.auto_mode), fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.auto_mode_description), color = Muted, fontSize = 13.sp)
+                }
+                Switch(checked = state.autoMode, onCheckedChange = onAutoModeChange)
+            }
+            if (state.phase == IsolationPhase.Running) {
+                state.stats?.let { stats ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Metric(stringResource(R.string.metric_inference), "%.1f ms".format(stats.inferenceMs))
+                        Metric(stringResource(R.string.metric_rtf), "%.2f".format(stats.realTimeFactor))
+                        Metric(stringResource(R.string.metric_input), "%.0f dB".format(stats.inputDb))
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Metric(stringResource(R.string.metric_underruns), stats.underruns.toString())
+                        Metric(stringResource(R.string.metric_buffer), "%.0f ms".format(stats.bufferMs))
+                        Metric(
+                            stringResource(R.string.metric_stability),
+                            stringResource(
+                                when (stats.stabilityLevel) {
+                                    2 -> R.string.stability_safe
+                                    1 -> R.string.stability_buffered
+                                    else -> R.string.stability_normal
+                                },
+                            ),
+                        )
+                    }
+                    if (state.autoMode) {
+                        Text(
+                            stringResource(
+                                if (stats.speechDetected) R.string.auto_speech else R.string.auto_background,
+                                (stats.effectiveReduction * 100).roundToInt(),
+                            ),
+                            color = Mint,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

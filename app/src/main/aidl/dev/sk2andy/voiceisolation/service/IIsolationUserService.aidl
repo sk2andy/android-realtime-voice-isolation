@@ -8,4 +8,6 @@ interface IIsolationUserService {
     void stop() = 2;
     void setIntensity(float intensity) = 3;
     boolean isRunning() = 4;
+    void startWithMix(float backgroundReduction, float voiceGain, boolean autoMode, IIsolationCallback callback) = 5;
+    void setMix(float backgroundReduction, float voiceGain, boolean autoMode) = 6;
 }

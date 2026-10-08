@@ -28,6 +28,8 @@ internal data class IsolationUiState(
     val automationEnabled: Boolean = false,
     val automationToken: String = "",
     val stats: ProcessingStats? = null,
+    val voiceGain: Float = IsolationSettings.legacyVoiceGain(intensity),
+    val autoMode: Boolean = false,
 )
 
 internal object IsolationStateStore {
@@ -64,6 +66,28 @@ internal object IsolationStateStore {
         }
     }
 
+    fun updateVoiceGain(voiceGain: Float) {
+        mutableState.update {
+            it.copy(
+                voiceGain = IsolationSettings.normalizeVoiceGain(voiceGain),
+                customIntensity = it.intensity,
+                preset = IsolationPreset.Custom,
+                selectedUserPresetId = null,
+            )
+        }
+    }
+
+    fun updateAutoMode(enabled: Boolean) {
+        mutableState.update {
+            it.copy(
+                autoMode = enabled,
+                customIntensity = it.intensity,
+                preset = IsolationPreset.Custom,
+                selectedUserPresetId = null,
+            )
+        }
+    }
+
     fun updateAutoOffMinutes(minutes: Int) {
         mutableState.update {
             it.copy(autoOffMinutes = IsolationSettings.normalizeAutoOffMinutes(minutes))
@@ -81,6 +105,8 @@ internal object IsolationStateStore {
                 autoOffMinutes = settings.autoOffMinutes,
                 automationEnabled = settings.automationEnabled,
                 automationToken = settings.automationToken,
+                voiceGain = settings.voiceGain,
+                autoMode = settings.autoMode,
             )
         }
     }

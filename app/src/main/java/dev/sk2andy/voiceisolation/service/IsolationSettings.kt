@@ -35,12 +35,16 @@ internal data class IsolationSettingsSnapshot(
     val autoOffMinutes: Int,
     val automationEnabled: Boolean,
     val automationToken: String,
+    val voiceGain: Float = IsolationSettings.legacyVoiceGain(intensity),
+    val autoMode: Boolean = false,
 )
 
 internal data class UserIsolationPreset(
     val id: String,
     val name: String,
     val intensity: Float,
+    val voiceGain: Float = IsolationSettings.legacyVoiceGain(intensity),
+    val autoMode: Boolean = false,
 )
 
 internal object IsolationSettings {
@@ -52,6 +56,8 @@ internal object IsolationSettings {
     private const val PREFERENCES_NAME = "voice_isolation_settings"
     private const val AUTO_OFF_MINUTES_KEY = "auto_off_minutes"
     private const val CUSTOM_INTENSITY_KEY = "custom_intensity"
+    private const val CUSTOM_VOICE_GAIN_KEY = "custom_voice_gain"
+    private const val AUTO_MODE_KEY = "auto_mode"
     private const val PRESET_KEY = "preset"
     private const val USER_PRESETS_KEY = "user_presets"
     private const val AUTOMATION_ENABLED_KEY = "automation_enabled"
@@ -77,10 +83,18 @@ internal object IsolationSettings {
         val customIntensity = normalizeIntensity(
             preferences.getFloat(CUSTOM_INTENSITY_KEY, DEFAULT_INTENSITY),
         )
-        val intensity = selectedUserPresetId
-            ?.let { id -> userPresets.first { it.id == id }.intensity }
+        val selectedUserPreset = selectedUserPresetId
+            ?.let { id -> userPresets.first { it.id == id } }
+        val intensity = selectedUserPreset?.intensity
             ?: preset.intensity
             ?: customIntensity
+        val voiceGain = selectedUserPreset?.voiceGain
+            ?: preset.intensity?.let(::legacyVoiceGain)
+            ?: normalizeVoiceGain(
+                preferences.getFloat(CUSTOM_VOICE_GAIN_KEY, legacyVoiceGain(customIntensity)),
+            )
+        val autoMode = selectedUserPreset?.autoMode
+            ?: (preset == IsolationPreset.Custom && preferences.getBoolean(AUTO_MODE_KEY, false))
         return IsolationSettingsSnapshot(
             intensity = intensity,
             customIntensity = customIntensity,
@@ -92,6 +106,8 @@ internal object IsolationSettings {
             ),
             automationEnabled = preferences.getBoolean(AUTOMATION_ENABLED_KEY, false),
             automationToken = automationToken(context),
+            voiceGain = voiceGain,
+            autoMode = autoMode,
         )
     }
 
@@ -109,17 +125,34 @@ internal object IsolationSettings {
     }
 
     fun setCustomIntensity(context: Context, intensity: Float): IsolationSettingsSnapshot {
-        val normalized = normalizeIntensity(intensity)
+        val current = snapshot(context)
+        return setCustomMix(context, intensity, current.voiceGain, current.autoMode)
+    }
+
+    fun setVoiceGain(context: Context, voiceGain: Float): IsolationSettingsSnapshot {
+        val current = snapshot(context)
+        return setCustomMix(context, current.intensity, voiceGain, current.autoMode)
+    }
+
+    fun setAutoMode(context: Context, enabled: Boolean): IsolationSettingsSnapshot {
+        val current = snapshot(context)
+        return setCustomMix(context, current.intensity, current.voiceGain, enabled)
+    }
+
+    fun setCustomMix(
+        context: Context,
+        intensity: Float,
+        voiceGain: Float,
+        autoMode: Boolean,
+    ): IsolationSettingsSnapshot {
         preferences(context)
             .edit()
-            .putFloat(CUSTOM_INTENSITY_KEY, normalized)
+            .putFloat(CUSTOM_INTENSITY_KEY, normalizeIntensity(intensity))
+            .putFloat(CUSTOM_VOICE_GAIN_KEY, normalizeVoiceGain(voiceGain))
+            .putBoolean(AUTO_MODE_KEY, autoMode)
             .putString(PRESET_KEY, IsolationPreset.Custom.storageValue)
             .apply()
-        return snapshot(context).copy(
-            intensity = normalized,
-            preset = IsolationPreset.Custom,
-            selectedUserPresetId = null,
-        )
+        return snapshot(context)
     }
 
     fun setPreset(context: Context, preset: IsolationPreset): IsolationSettingsSnapshot {
@@ -142,6 +175,8 @@ internal object IsolationSettings {
         context: Context,
         name: String,
         intensity: Float,
+        voiceGain: Float = legacyVoiceGain(intensity),
+        autoMode: Boolean = false,
     ): IsolationSettingsSnapshot {
         val normalizedName = normalizeUserPresetName(name)
         require(normalizedName.isNotBlank()) { "Preset name must not be blank" }
@@ -152,6 +187,8 @@ internal object IsolationSettings {
             id = existing?.id ?: UUID.randomUUID().toString(),
             name = normalizedName,
             intensity = normalizeIntensity(intensity),
+            voiceGain = normalizeVoiceGain(voiceGain),
+            autoMode = autoMode,
         )
         val encodedPresets = existingPresets
             .filterNot { it.id == preset.id }
@@ -178,6 +215,8 @@ internal object IsolationSettings {
             editor
                 .putString(PRESET_KEY, IsolationPreset.Custom.storageValue)
                 .putFloat(CUSTOM_INTENSITY_KEY, customIntensity)
+                .putFloat(CUSTOM_VOICE_GAIN_KEY, deleted?.voiceGain ?: legacyVoiceGain(customIntensity))
+                .putBoolean(AUTO_MODE_KEY, deleted?.autoMode ?: false)
         }
         editor.apply()
         return snapshot(context)
@@ -220,6 +259,11 @@ internal object IsolationSettings {
     fun normalizeIntensity(intensity: Float): Float =
         if (intensity.isFinite()) intensity.coerceIn(0f, 1f) else DEFAULT_INTENSITY
 
+    fun normalizeVoiceGain(voiceGain: Float): Float =
+        if (voiceGain.isFinite()) voiceGain.coerceIn(1f, 2f) else 1f
+
+    fun legacyVoiceGain(intensity: Float): Float = 1f + normalizeIntensity(intensity) * 0.3f
+
     fun normalizeUserPresetName(name: String): String =
         name.trim().take(MAX_USER_PRESET_NAME_LENGTH)
 
@@ -230,17 +274,22 @@ internal object IsolationSettings {
             preset.id,
             encodedName,
             normalizeIntensity(preset.intensity).toString(),
+            normalizeVoiceGain(preset.voiceGain).toString(),
+            preset.autoMode.toString(),
         ).joinToString(USER_PRESET_SEPARATOR)
     }
 
     internal fun decodeUserPreset(encoded: String): UserIsolationPreset? = runCatching {
-        val parts = encoded.split(USER_PRESET_SEPARATOR, limit = 3)
-        require(parts.size == 3)
+        val parts = encoded.split(USER_PRESET_SEPARATOR)
+        require(parts.size == 3 || parts.size == 5)
         val name = Base64.getUrlDecoder().decode(parts[1]).toString(Charsets.UTF_8)
+        val intensity = normalizeIntensity(parts[2].toFloat())
         UserIsolationPreset(
             id = parts[0].also { require(it.isNotBlank()) },
             name = normalizeUserPresetName(name).also { require(it.isNotBlank()) },
-            intensity = normalizeIntensity(parts[2].toFloat()),
+            intensity = intensity,
+            voiceGain = if (parts.size == 5) normalizeVoiceGain(parts[3].toFloat()) else legacyVoiceGain(intensity),
+            autoMode = if (parts.size == 5) parts[4].toBooleanStrict() else false,
         )
     }.getOrNull()
 

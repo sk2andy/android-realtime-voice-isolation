@@ -29,29 +29,31 @@ internal class PrivilegedAudioPipeline(
     private var audioRecord: AudioRecord? = null
     private var audioTrack: AudioTrack? = null
     private var processingJob: Job? = null
+    private var initialPlaybackBufferFrames = 0
 
     @Volatile
-    private var isolationIntensity = 0.65f
+    private var mixSettings = AudioMixSettings.fromIntensity(0.65f)
 
-    suspend fun start(initialIntensity: Float) {
+    suspend fun start(initialIntensity: Float) = start(AudioMixSettings.fromIntensity(initialIntensity))
+
+    suspend fun start(initialMix: AudioMixSettings) {
         checkUserVisible(processingJob == null) {
             UserVisibleAudioException(
                 R.string.error_audio_pipeline_running,
                 "Audio pipeline is already running",
             )
         }
-        isolationIntensity = initialIntensity.coerceIn(0f, 1f)
+        mixSettings = initialMix.normalized()
 
         try {
             context.installShellAttribution()
             val createdProcessor = GtcrnProcessor(context)
-            val createdTrack = createAudioTrack()
-            val createdPolicy = PrivilegedAudioPolicy(context)
-            val createdRecord = createdPolicy.openRecord()
-
             processor = createdProcessor
+            val createdTrack = createAudioTrack()
             audioTrack = createdTrack
+            val createdPolicy = PrivilegedAudioPolicy(context)
             audioPolicy = createdPolicy
+            val createdRecord = createdPolicy.openRecord()
             audioRecord = createdRecord
 
             createdRecord.startRecording()
@@ -64,7 +66,11 @@ internal class PrivilegedAudioPipeline(
     }
 
     fun setIntensity(value: Float) {
-        isolationIntensity = value.coerceIn(0f, 1f)
+        mixSettings = AudioMixSettings.fromIntensity(value)
+    }
+
+    fun setMixSettings(settings: AudioMixSettings) {
+        mixSettings = settings.normalized()
     }
 
     suspend fun stop() {
@@ -88,34 +94,52 @@ internal class PrivilegedAudioPipeline(
         track: AudioTrack,
         model: GtcrnProcessor,
     ) {
-        Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
-        val inputPcm = ShortArray(StftProcessor.HOP_SIZE)
-        val outputPcm = ShortArray(StftProcessor.HOP_SIZE)
-        val inputFloat = FloatArray(StftProcessor.HOP_SIZE)
-        val mixedFloat = FloatArray(StftProcessor.HOP_SIZE)
-        val intensityMixer = IsolationIntensityMixer(StftProcessor.HOP_SIZE)
-        var frameCounter = 0
-        var maximumInputDb = Float.NEGATIVE_INFINITY
-
         try {
+            Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
+            val inputPcm = ShortArray(StftProcessor.HOP_SIZE)
+            val outputPcm = ShortArray(StftProcessor.HOP_SIZE)
+            val inputFloat = FloatArray(StftProcessor.HOP_SIZE)
+            val mixedFloat = FloatArray(StftProcessor.HOP_SIZE)
+            val intensityMixer = IsolationIntensityMixer(StftProcessor.HOP_SIZE)
+            val bufferController = AdaptiveBufferController(
+                initialBufferFrames = initialPlaybackBufferFrames,
+                capacityFrames = minOf(
+                    track.bufferCapacityInFrames,
+                    initialPlaybackBufferFrames * MAXIMUM_BUFFER_MULTIPLIER,
+                ),
+                frameSize = StftProcessor.HOP_SIZE,
+                actualBufferFrames = track.bufferSizeInFrames,
+            )
+            var frameCounter = 0
+            var maximumInputDb = Float.NEGATIVE_INFINITY
             while (currentCoroutineContext().isActive) {
                 readFrame(record, inputPcm)
                 PcmConverter.toFloat(inputPcm, inputFloat)
                 maximumInputDb = maxOf(maximumInputDb, calculateDb(inputFloat))
                 val isolatedFloat = model.process(inputFloat)
-                intensityMixer.mix(inputFloat, isolatedFloat, mixedFloat, isolationIntensity)
+                intensityMixer.mix(inputFloat, isolatedFloat, mixedFloat, mixSettings)
                 PcmConverter.toShort(mixedFloat, outputPcm)
                 writeFrame(track, outputPcm)
 
                 frameCounter++
                 if (frameCounter % STATS_INTERVAL_FRAMES == 0) {
+                    val underruns = track.underrunCount
+                    bufferController.synchronize(track.bufferSizeInFrames, track.bufferCapacityInFrames)
+                    bufferController.resizeRequest(underruns)?.let { requestedFrames ->
+                        bufferController.onResizeResult(track.setBufferSizeInFrames(requestedFrames))
+                        bufferController.synchronize(track.bufferSizeInFrames, track.bufferCapacityInFrames)
+                    }
                     val inferenceMs = model.inferenceMs()
                     onStats(
                         ProcessingStats(
                             inferenceMs = inferenceMs,
                             realTimeFactor = inferenceMs / FRAME_DURATION_MS,
                             inputDb = maximumInputDb,
-                            underruns = track.underrunCount,
+                            underruns = underruns,
+                            speechDetected = intensityMixer.speechDetected,
+                            effectiveReduction = intensityMixer.effectiveReduction,
+                            bufferMs = bufferController.bufferFrames * 1000f / GtcrnProcessor.SAMPLE_RATE,
+                            stabilityLevel = bufferController.stabilityLevel,
                         ),
                     )
                     maximumInputDb = Float.NEGATIVE_INFINITY
@@ -137,6 +161,33 @@ internal class PrivilegedAudioPipeline(
             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
             .setAllowedCapturePolicy(AudioAttributes.ALLOW_CAPTURE_BY_NONE)
             .build()
+        val initialBufferFrames = initialBufferFrames()
+        initialPlaybackBufferFrames = initialBufferFrames
+        val builder = AudioTrack.Builder()
+            .setAudioAttributes(attributes)
+            .setAudioFormat(format)
+            .setBufferSizeInBytes(initialBufferFrames * PCM_BYTES_PER_FRAME * MAXIMUM_BUFFER_MULTIPLIER)
+            .setTransferMode(AudioTrack.MODE_STREAM)
+            .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+        return builder.build().also {
+            try {
+                checkUserVisible(it.state == AudioTrack.STATE_INITIALIZED) {
+                    UserVisibleAudioException(
+                        R.string.error_audio_track_initialization,
+                        "AudioTrack initialization failed",
+                    )
+                }
+                // Allocate headroom once, while retaining the previous active buffer and latency.
+                // If the device refuses shrinking, use its reported size as the actual buffer.
+                it.setBufferSizeInFrames(initialBufferFrames)
+            } catch (error: Throwable) {
+                runCatching { it.release() }
+                throw error
+            }
+        }
+    }
+
+    private fun initialBufferFrames(): Int {
         val minimumBuffer = AudioTrack.getMinBufferSize(
             GtcrnProcessor.SAMPLE_RATE,
             AudioFormat.CHANNEL_OUT_MONO,
@@ -149,20 +200,7 @@ internal class PrivilegedAudioPipeline(
                 minimumBuffer,
             )
         }
-        val builder = AudioTrack.Builder()
-            .setAudioAttributes(attributes)
-            .setAudioFormat(format)
-            .setBufferSizeInBytes(maxOf(minimumBuffer, StftProcessor.HOP_SIZE * 2 * 4))
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
-        return builder.build().also {
-            checkUserVisible(it.state == AudioTrack.STATE_INITIALIZED) {
-                UserVisibleAudioException(
-                    R.string.error_audio_track_initialization,
-                    "AudioTrack initialization failed",
-                )
-            }
-        }
+        return maxOf((minimumBuffer + PCM_BYTES_PER_FRAME - 1) / PCM_BYTES_PER_FRAME, StftProcessor.HOP_SIZE * 4)
     }
 
     private fun readFrame(record: AudioRecord, destination: ShortArray) {
@@ -217,6 +255,7 @@ internal class PrivilegedAudioPipeline(
         runCatching { audioTrack?.flush() }
         runCatching { audioTrack?.release() }
         audioTrack = null
+        initialPlaybackBufferFrames = 0
         audioPolicy?.close()
         audioPolicy = null
         audioRecord = null
@@ -227,5 +266,7 @@ internal class PrivilegedAudioPipeline(
     companion object {
         private const val FRAME_DURATION_MS = StftProcessor.HOP_SIZE * 1000f / GtcrnProcessor.SAMPLE_RATE
         private const val STATS_INTERVAL_FRAMES = 15
+        private const val PCM_BYTES_PER_FRAME = 2
+        private const val MAXIMUM_BUFFER_MULTIPLIER = 4
     }
 }

@@ -33,6 +33,25 @@ class IsolationSettingsTest {
     }
 
     @Test
+    fun `voice gain is finite and clamped`() {
+        assertEquals(1f, IsolationSettings.normalizeVoiceGain(-1f))
+        assertEquals(1.7f, IsolationSettings.normalizeVoiceGain(1.7f))
+        assertEquals(2f, IsolationSettings.normalizeVoiceGain(3f))
+        assertEquals(1f, IsolationSettings.normalizeVoiceGain(Float.NaN))
+        assertEquals(1f, IsolationSettings.normalizeVoiceGain(Float.POSITIVE_INFINITY))
+        assertEquals(1f, IsolationSettings.normalizeVoiceGain(Float.NEGATIVE_INFINITY))
+    }
+
+    @Test
+    fun `legacy intensity preserves original voice boost`() {
+        assertEquals(1f, IsolationSettings.legacyVoiceGain(0f))
+        assertEquals(1.195f, IsolationSettings.legacyVoiceGain(0.65f))
+        assertEquals(1.3f, IsolationSettings.legacyVoiceGain(1f))
+        assertEquals(1f, IsolationSettings.legacyVoiceGain(-1f))
+        assertEquals(1.3f, IsolationSettings.legacyVoiceGain(2f))
+    }
+
+    @Test
     fun `built in presets keep expected strengths`() {
         assertEquals(0.85f, IsolationPreset.Podcast.intensity)
         assertEquals(0.65f, IsolationPreset.Film.intensity)
@@ -47,6 +66,8 @@ class IsolationSettingsTest {
             id = "preset-id",
             name = "Film | Nacht 🎬",
             intensity = 0.72f,
+            voiceGain = 1.8f,
+            autoMode = true,
         )
 
         assertEquals(
@@ -56,10 +77,33 @@ class IsolationSettingsTest {
     }
 
     @Test
+    fun `legacy user presets decode with original voice boost and manual mode`() {
+        assertEquals(
+            UserIsolationPreset("id", "name", 0.5f, voiceGain = 1.15f, autoMode = false),
+            IsolationSettings.decodeUserPreset("id|bmFtZQ|0.5"),
+        )
+    }
+
+    @Test
+    fun `stored user preset controls are normalized`() {
+        assertEquals(
+            UserIsolationPreset("id", "name", 1f, voiceGain = 2f, autoMode = true),
+            IsolationSettings.decodeUserPreset("id|bmFtZQ|2|3|true"),
+        )
+        assertEquals(
+            UserIsolationPreset("id", "name", 0f, voiceGain = 1f, autoMode = false),
+            IsolationSettings.decodeUserPreset("id|bmFtZQ|-2|NaN|false"),
+        )
+    }
+
+    @Test
     fun `invalid user preset encoding is ignored`() {
         assertEquals(null, IsolationSettings.decodeUserPreset("broken"))
         assertEquals(null, IsolationSettings.decodeUserPreset("|bmFtZQ|0.5"))
         assertEquals(null, IsolationSettings.decodeUserPreset("id|not base64!|0.5"))
+        assertEquals(null, IsolationSettings.decodeUserPreset("id|bmFtZQ|0.5|1.5"))
+        assertEquals(null, IsolationSettings.decodeUserPreset("id|bmFtZQ|0.5|1.5|maybe"))
+        assertEquals(null, IsolationSettings.decodeUserPreset("id|bmFtZQ|0.5|1.5|true|extra"))
     }
 
     @Test

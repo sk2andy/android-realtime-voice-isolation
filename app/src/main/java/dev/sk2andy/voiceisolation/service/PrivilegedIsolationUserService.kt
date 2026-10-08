@@ -5,6 +5,7 @@ import android.os.Process
 import android.util.Log
 import androidx.annotation.Keep
 import dev.sk2andy.voiceisolation.R
+import dev.sk2andy.voiceisolation.audio.AudioMixSettings
 import dev.sk2andy.voiceisolation.audio.PrivilegedAudioPipeline
 import dev.sk2andy.voiceisolation.audio.UserVisibleAudioException
 import kotlinx.coroutines.CoroutineScope
@@ -23,12 +24,13 @@ class PrivilegedIsolationUserService @Keep constructor(
 ) : IIsolationUserService.Stub() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
+    private val mixLock = Any()
 
     @Volatile
     private var running = false
 
     @Volatile
-    private var requestedIntensity = IsolationSettings.DEFAULT_INTENSITY
+    private var requestedMix = AudioMixSettings.fromIntensity(IsolationSettings.DEFAULT_INTENSITY)
 
     private var callback: IIsolationCallback? = null
 
@@ -36,7 +38,19 @@ class PrivilegedIsolationUserService @Keep constructor(
     private var pipeline: PrivilegedAudioPipeline? = null
 
     override fun start(intensity: Float, callback: IIsolationCallback) {
-        requestedIntensity = IsolationSettings.normalizeIntensity(intensity)
+        val mix = AudioMixSettings.fromIntensity(intensity)
+        startWithMix(mix.backgroundReduction, mix.voiceGain, mix.autoMode, callback)
+    }
+
+    override fun startWithMix(
+        backgroundReduction: Float,
+        voiceGain: Float,
+        autoMode: Boolean,
+        callback: IIsolationCallback,
+    ) {
+        synchronized(mixLock) {
+            requestedMix = AudioMixSettings(backgroundReduction, voiceGain, autoMode).normalized()
+        }
         this.callback = callback
         scope.launch {
             mutex.withLock {
@@ -58,6 +72,10 @@ class PrivilegedIsolationUserService @Keep constructor(
                                 stats.realTimeFactor,
                                 stats.inputDb,
                                 stats.underruns,
+                                stats.speechDetected,
+                                stats.effectiveReduction,
+                                stats.bufferMs,
+                                stats.stabilityLevel,
                             )
                         }
                     },
@@ -69,8 +87,10 @@ class PrivilegedIsolationUserService @Keep constructor(
                 try {
                     // Publish pipeline before startup so concurrent preset changes update pending value.
                     pipeline = createdPipeline
-                    createdPipeline.start(requestedIntensity)
-                    createdPipeline.setIntensity(requestedIntensity)
+                    createdPipeline.start(requestedMix)
+                    synchronized(mixLock) {
+                        createdPipeline.setMixSettings(requestedMix)
+                    }
                     running = true
                     notifyState(IsolationProtocol.RUNNING, context.getString(R.string.state_media_isolated))
                 } catch (error: Throwable) {
@@ -98,8 +118,19 @@ class PrivilegedIsolationUserService @Keep constructor(
 
     override fun setIntensity(intensity: Float) {
         val normalized = IsolationSettings.normalizeIntensity(intensity)
-        requestedIntensity = normalized
-        pipeline?.setIntensity(normalized)
+        synchronized(mixLock) {
+            val mix = requestedMix.copy(backgroundReduction = normalized)
+            requestedMix = mix
+            pipeline?.setMixSettings(mix)
+        }
+    }
+
+    override fun setMix(backgroundReduction: Float, voiceGain: Float, autoMode: Boolean) {
+        val mix = AudioMixSettings(backgroundReduction, voiceGain, autoMode).normalized()
+        synchronized(mixLock) {
+            requestedMix = mix
+            pipeline?.setMixSettings(mix)
+        }
     }
 
     override fun isRunning(): Boolean = running

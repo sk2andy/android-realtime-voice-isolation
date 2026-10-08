@@ -75,7 +75,7 @@ class AutomationReceiver : BroadcastReceiver() {
         check(intensity.isFinite() && intensity in 0f..1f) { "Intensity must be between 0 and 1" }
         val settings = IsolationSettings.setCustomIntensity(context, intensity)
         IsolationStateStore.updateSettings(settings)
-        applyIntensityToActiveService(context, settings.intensity)
+        applyMixToActiveService(context)
     }
 
     private fun setPreset(context: Context, intent: Intent) {
@@ -89,10 +89,10 @@ class AutomationReceiver : BroadcastReceiver() {
             IsolationSettings.setUserPreset(context, checkNotNull(userPreset).id)
         }
         IsolationStateStore.updateSettings(settings)
-        applyIntensityToActiveService(context, settings.intensity)
+        applyMixToActiveService(context)
     }
 
-    private fun applyIntensityToActiveService(context: Context, intensity: Float) {
+    private fun applyMixToActiveService(context: Context) {
         if (
             IsolationStateStore.state.value.phase !in setOf(
                 IsolationPhase.Connecting,
@@ -103,9 +103,7 @@ class AutomationReceiver : BroadcastReceiver() {
             return
         }
         context.startService(
-            AudioIsolationService.intent(context, AudioIsolationService.ACTION_SET_INTENSITY)
-                .putExtra(AudioIsolationService.EXTRA_INTENSITY, intensity)
-                .putExtra(AudioIsolationService.EXTRA_PERSIST, false),
+            AudioIsolationService.intent(context, AudioIsolationService.ACTION_SET_MIX),
         )
     }
 

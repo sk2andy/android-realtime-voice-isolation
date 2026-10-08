@@ -60,9 +60,16 @@ class AudioIsolationService : Service() {
             realTimeFactor: Float,
             inputDb: Float,
             underruns: Int,
+            speechDetected: Boolean,
+            effectiveReduction: Float,
+            bufferMs: Float,
+            stabilityLevel: Int,
         ) {
             IsolationStateStore.updateStats(
-                ProcessingStats(inferenceMs, realTimeFactor, inputDb, underruns),
+                ProcessingStats(
+                    inferenceMs, realTimeFactor, inputDb, underruns,
+                    speechDetected, effectiveReduction, bufferMs, stabilityLevel,
+                ),
             )
             updateNotification()
             if (autoOffController.onAudioLevel(inputDb, SystemClock.elapsedRealtime())) {
@@ -83,7 +90,8 @@ class AudioIsolationService : Service() {
             }
             userService = connectedService
             try {
-                connectedService.start(IsolationStateStore.state.value.intensity, callback)
+                val state = IsolationStateStore.state.value
+                connectedService.startWithMix(state.intensity, state.voiceGain, state.autoMode, callback)
             } catch (error: Throwable) {
                 Log.e(TAG, "Shizuku UserService start failed", error)
                 fail(
@@ -133,6 +141,7 @@ class AudioIsolationService : Service() {
             ACTION_SET_AUTO_OFF -> setAutoOffMinutes(
                 intent.getIntExtra(EXTRA_AUTO_OFF_MINUTES, IsolationSettings.DEFAULT_AUTO_OFF_MINUTES),
             )
+            ACTION_SET_MIX -> applyMixToUserService()
             ACTION_START -> startIsolation()
         }
         return START_NOT_STICKY
@@ -222,7 +231,13 @@ class AudioIsolationService : Service() {
         } else {
             IsolationStateStore.updateIntensity(normalized)
         }
-        runCatching { userService?.setIntensity(normalized) }
+        applyMixToUserService()
+    }
+
+    private fun applyMixToUserService() {
+        val state = IsolationStateStore.state.value
+        runCatching { userService?.setMix(state.intensity, state.voiceGain, state.autoMode) }
+            .onFailure { error -> Log.e(TAG, "Could not update audio mix", error) }
         updateNotification()
     }
 
@@ -315,6 +330,7 @@ class AudioIsolationService : Service() {
         const val ACTION_INTENSITY_UP = "dev.sk2andy.voiceisolation.action.INTENSITY_UP"
         const val ACTION_INTENSITY_DOWN = "dev.sk2andy.voiceisolation.action.INTENSITY_DOWN"
         const val ACTION_SET_INTENSITY = "dev.sk2andy.voiceisolation.action.SET_INTENSITY"
+        const val ACTION_SET_MIX = "dev.sk2andy.voiceisolation.action.SET_MIX"
         const val ACTION_SET_AUTO_OFF = "dev.sk2andy.voiceisolation.action.SET_AUTO_OFF"
         const val EXTRA_INTENSITY = "intensity"
         const val EXTRA_PERSIST = "persist"
